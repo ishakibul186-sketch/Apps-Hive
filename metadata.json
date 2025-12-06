@@ -1,0 +1,5 @@
+{
+  "name": "Apps Hive",
+  "description": "An application hub that provides a collection of tools accessible after user authentication. Users can browse tools and launch them in a sandboxed view.",
+  "requestFramePermissions": []
+}
