@@ -1,23 +1,30 @@
 import fs from 'fs/promises';
 import path from 'path';
-// FIX: The `process` object can conflict with browser polyfills that don't have an `exit` method.
-// Importing `process` directly from the native 'node:process' module avoids this ambiguity and resolves the type error.
-import process from 'node:process';
+// FIX: Removed explicit `process` import. The `process` object is globally
+// available in Node.js, and this change avoids a type definition conflict.
+import esbuild from 'esbuild';
 
-const sourceDir = './';
 const distDir = './dist';
-// Define files and folders to exclude from the final build directory
-const itemsToExclude = new Set([
-  '.git', 
-  'node_modules', 
-  'dist', 
-  'package.json', 
-  'package-lock.json', 
-  'build.mjs', 
-  '.gitignore',
-  'vercel.json',
-  'firebase.json'
-]);
+
+// Define assets to be copied directly
+const assetsToCopy = [
+    'index.html',
+    'assets',
+    'google094f0a5dcd31b0ad.html',
+    'sitemap.xml',
+    'metadata.json'
+];
+
+// Define dependencies that are handled by the importmap and should not be bundled
+const externalPackages = [
+    'firebase/compat/app',
+    'firebase/compat/auth',
+    'firebase/compat/database',
+    'react',
+    'react-dom/client',
+    'react/jsx-runtime'
+];
+
 
 /**
  * Recursively copies a source file or directory to a destination.
@@ -25,66 +32,84 @@ const itemsToExclude = new Set([
  * @param {string} dest - The destination path.
  */
 async function copyRecursive(src, dest) {
-  try {
-    const stats = await fs.stat(src);
-    const isDirectory = stats.isDirectory();
-
-    if (isDirectory) {
-      // Do not copy excluded directories
-      if (itemsToExclude.has(path.basename(src))) {
-        return;
-      }
-      // Create destination directory and copy its contents
-      await fs.mkdir(dest, { recursive: true });
-      const entries = await fs.readdir(src);
-      for (const entry of entries) {
-        const srcPath = path.join(src, entry);
-        const destPath = path.join(dest, entry);
-        await copyRecursive(srcPath, destPath);
-      }
-    } else {
-      // Copy file directly
-      await fs.copyFile(src, dest);
+    try {
+        const stats = await fs.stat(src);
+        if (stats.isDirectory()) {
+            await fs.mkdir(dest, { recursive: true });
+            const entries = await fs.readdir(src);
+            for (const entry of entries) {
+                const srcPath = path.join(src, entry);
+                const destPath = path.join(dest, entry);
+                await copyRecursive(srcPath, destPath);
+            }
+        } else {
+            await fs.copyFile(src, dest);
+        }
+    } catch (error) {
+        if (error.code !== 'ENOENT') { // Ignore if source doesn't exist
+            throw error;
+        }
     }
-  } catch (error) {
-    // Ignore errors for files that might not exist (e.g., package-lock.json)
-    if (error.code !== 'ENOENT') {
-      throw error;
-    }
-  }
 }
+
 
 /**
  * Main build function to prepare the application for deployment.
  */
 async function build() {
-  console.log('Starting build process...');
+    console.log('Starting production build process...');
 
-  try {
-    // 1. Clean the distribution directory
-    console.log(`Cleaning directory: ${distDir}`);
-    await fs.rm(distDir, { recursive: true, force: true });
-    await fs.mkdir(distDir, { recursive: true });
+    try {
+        // 1. Clean the distribution directory
+        console.log(`Cleaning directory: ${distDir}`);
+        await fs.rm(distDir, { recursive: true, force: true });
+        await fs.mkdir(distDir, { recursive: true });
 
-    // 2. Copy all necessary files and directories to the dist folder
-    console.log(`Copying files from '${sourceDir}' to '${distDir}'`);
-    const entries = await fs.readdir(sourceDir);
-    for (const entry of entries) {
-        if (!itemsToExclude.has(entry)) {
-            const srcPath = path.join(sourceDir, entry);
-            const destPath = path.join(distDir, entry);
-            await copyRecursive(srcPath, destPath);
+        // 2. Bundle JavaScript and TypeScript files
+        console.log('Bundling application source code with esbuild...');
+        await esbuild.build({
+            entryPoints: ['index.tsx'],
+            bundle: true,
+            outfile: path.join(distDir, 'index.js'),
+            format: 'esm',
+            jsx: 'automatic',
+            loader: { '.tsx': 'tsx', '.ts': 'ts' },
+            external: externalPackages,
+        });
+        console.log('Source code bundled successfully.');
+
+        // 3. Copy static assets
+        console.log('Copying static assets...');
+        for (const asset of assetsToCopy) {
+            const srcPath = path.join('./', asset);
+            const destPath = path.join(distDir, asset);
+            try {
+                await fs.access(srcPath);
+                await copyRecursive(srcPath, destPath);
+                console.log(`  - Copied ${asset}`);
+            } catch {
+                console.log(`  - Skipping ${asset} (does not exist)`);
+            }
         }
-    }
-    
-    console.log('\nBuild completed successfully!');
-    console.log(`Your deploy-ready application is in the '${distDir}' folder.`);
+        
+        // 4. Update index.html to point to the bundled JS file
+        console.log('Updating index.html script reference...');
+        const indexPath = path.join(distDir, 'index.html');
+        let htmlContent = await fs.readFile(indexPath, 'utf-8');
+        htmlContent = htmlContent.replace(
+            '<script type="module" src="/index.tsx"></script>',
+            '<script type="module" src="/index.js"></script>'
+        );
+        await fs.writeFile(indexPath, htmlContent, 'utf-8');
+        console.log('index.html updated.');
 
-  } catch (error) {
-    console.error('Build process failed:', error);
-    // FIX: Call process.exit() to ensure the Node.js process is terminated correctly.
-    process.exit(1); // Exit with an error code
-  }
+        console.log('\nBuild completed successfully!');
+        console.log(`Your deploy-ready application is in the '${distDir}' folder.`);
+
+    } catch (error) {
+        console.error('Build process failed:', error);
+        process.exit(1); // Exit with an error code
+    }
 }
 
 // Run the build process
