@@ -1,7 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-// FIX: Removed explicit `process` import. The `process` object is globally
-// available in Node.js, and this change avoids a type definition conflict.
+// FIX: Explicitly import `process` from `node:process` to resolve type conflicts
+// with browser-environment globals and ensure `process.exit` is available.
+import process from 'node:process';
 import esbuild from 'esbuild';
 
 const distDir = './dist';
@@ -12,7 +13,8 @@ const assetsToCopy = [
     'assets',
     'google094f0a5dcd31b0ad.html',
     'sitemap.xml',
-    'metadata.json'
+    'metadata.json',
+    'robots.txt'
 ];
 
 // Define dependencies that are handled by the importmap and should not be bundled
