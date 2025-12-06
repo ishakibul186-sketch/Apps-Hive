@@ -1,7 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-// FIX: Explicitly import 'process' to resolve type error for `process.exit`.
-import process from 'process';
+// FIX: The `process` object can conflict with browser polyfills that don't have an `exit` method.
+// Importing `exit` directly from the native 'node:process' module avoids this ambiguity and resolves the type error.
+import { exit } from 'node:process';
 
 const sourceDir = './';
 const distDir = './dist';
@@ -79,7 +80,8 @@ async function build() {
 
   } catch (error) {
     console.error('Build process failed:', error);
-    process.exit(1); // Exit with an error code
+    // FIX: Call the imported `exit` function directly to ensure the Node.js process is terminated correctly.
+    exit(1); // Exit with an error code
   }
 }
 
