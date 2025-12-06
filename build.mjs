@@ -1,8 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 // FIX: The `process` object can conflict with browser polyfills that don't have an `exit` method.
-// Importing `exit` directly from the native 'node:process' module avoids this ambiguity and resolves the type error.
-import { exit } from 'node:process';
+// Importing `process` directly from the native 'node:process' module avoids this ambiguity and resolves the type error.
+import process from 'node:process';
 
 const sourceDir = './';
 const distDir = './dist';
@@ -14,7 +14,9 @@ const itemsToExclude = new Set([
   'package.json', 
   'package-lock.json', 
   'build.mjs', 
-  '.gitignore'
+  '.gitignore',
+  'vercel.json',
+  'firebase.json'
 ]);
 
 /**
@@ -80,8 +82,8 @@ async function build() {
 
   } catch (error) {
     console.error('Build process failed:', error);
-    // FIX: Call the imported `exit` function directly to ensure the Node.js process is terminated correctly.
-    exit(1); // Exit with an error code
+    // FIX: Call process.exit() to ensure the Node.js process is terminated correctly.
+    process.exit(1); // Exit with an error code
   }
 }
 
